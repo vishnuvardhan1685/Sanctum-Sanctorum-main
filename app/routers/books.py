@@ -44,3 +44,4 @@ def get_book(book_id: int, db: Session = Depends(get_db)):
 
 
 # TODO: expose PATCH /books/{book_id} (see SPEC.md)
+
