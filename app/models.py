@@ -32,7 +32,7 @@ class Book(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
     author: Mapped[str] = mapped_column(String(200))
-    isbn: Mapped[str] = mapped_column(String(13), unique=True, index=True)
+    isbn: Mapped[str] = mapped_column(String(13), unique=True, nullable=False, index=True)
     price_cents: Mapped[int] = mapped_column(Integer)
     stock: Mapped[int] = mapped_column(Integer)
     restricted: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -1,23 +1,37 @@
 """Book catalogue operations."""
-from typing import Optional
+from typing import Dict,Optional
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.orm import Session
-
+from sqlalchemy.exc import IntegrityError
 from app.models import Book
 from app.schemas import BookCreate, BookPage, BookSort, BookUpdate
+
+SORT_COLUMNS : dict[str, ColumnElement] = {
+    "title": Book.title.asc(),
+    "-title": Book.title.desc(),
+    "price": Book.price_cents.asc(),
+    "-price": Book.price_cents.desc(),
+}
 
 
 def create_book(db: Session, data: BookCreate) -> Book:
     """Add a book to the catalogue.
-
     Rules: the (already normalized) ISBN must be unique -> 409 otherwise.
     """
     # TODO: reject a duplicate ISBN with 409
     book = Book(**data.model_dump())
     db.add(book)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException (
+            status_code=409,
+            detail="A book with this ISBN already exists"
+        )
     db.refresh(book)
     return book
 
