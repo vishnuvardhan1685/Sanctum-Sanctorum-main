@@ -117,9 +117,10 @@ class MemberCreate(BaseModel):
     @classmethod
     def normalize_email(cls, value: str) -> str:
         """Validate and normalize the email address."""
-        if not EMAIL_PATTERN.match(value):
+        email = value.strip().lower()
+        if not EMAIL_PATTERN.match(email):
             raise ValueError("email is not valid")
-        return value
+        return email
 
 
 class MemberOut(BaseModel):
@@ -131,6 +132,11 @@ class MemberOut(BaseModel):
     tier: str
     created_at: datetime
 
+class MemberPage(BaseModel):
+    items: List[MemberOut]
+    total: int
+    limit: int
+    offset: int
 
 class MemberStats(BaseModel):
     member_id: int
