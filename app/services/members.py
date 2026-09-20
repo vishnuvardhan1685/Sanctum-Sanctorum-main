@@ -1,13 +1,14 @@
 """Member operations and tier helpers."""
 from datetime import datetime
+from enum import member
 from typing import List
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Member, MemberTier, Order
-from app.schemas import MemberCreate, MemberStats
+from app.schemas import MemberCreate, MemberPage, MemberStats, MemberOut
 
 # Tiers from lowest to highest; a member's rank is their index in this list.
 TIER_ORDER: List[str] = [
@@ -40,6 +41,12 @@ def create_member(db: Session, data: MemberCreate, now: datetime) -> Member:
     Rules: email (already stripped + lowercased) must be unique -> 409; created_at = now.
     """
     # TODO: reject an email that is already in use with 409
+    if(db.scalars(select(Member.id).where(Member.email == data.email))) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="A member with this email already exists"
+        )
+    
     member = Member(name=data.name, email=data.email, tier=data.tier.value, created_at=now)
     db.add(member)
     db.commit()
@@ -54,6 +61,15 @@ def get_member(db: Session, member_id: int) -> Member:
         raise HTTPException(status_code=404, detail="Member not found")
     return member
 
+def list_members(db: Session, limit:int = 20, offset:int = 0) -> MemberPage:
+    """The member directory, id ascending, paginated the same way the book catalogue is."""
+    total = db.scalar(select(func.count()).select_from(Member)) or 0
+    members = db.scalars(select(Member).order_by(Member.id.asc()).limit(limit).offset(offset)).all()
+    member_items = [
+        MemberOut.model_validate(member)
+        for member in members
+    ]
+    return MemberPage(items=member_items, total=total, limit=limit, offset=offset)
 
 def list_member_orders(db: Session, member_id: int) -> List[Order]:
     """All orders of a member ordered by id ascending; 404 if the member is missing."""
