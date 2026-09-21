@@ -22,23 +22,20 @@ NonNegativeInt = Annotated[int, Field(ge=0)]
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
+
 def isbn13_check_digit(body: str) -> int:
-    """Check digit for the first 12 digits of an ISBN-13 (weights 1,3,1,3,...)."""
+    """Check digit for the first 12 digits of an ISBN-13 (weights 1, 3, 1, 3, ...)."""
     weighted_sum = sum(int(digit) * (1 if position % 2 == 0 else 3) for position, digit in enumerate(body))
-    return (10 - (weighted_sum % 10)) % 10
+    return (10 - weighted_sum % 10) % 10
+
 
 def normalize_isbn13(raw: str) -> str:
     """Strip hyphens/spaces and verify the ISBN-13 checksum. Raises ValueError if invalid."""
-    isbn = raw.replace("-", "").replace(" ", "").strip()
+    isbn = raw.replace("-", "").replace(" ", "")
     if len(isbn) != 13 or not isbn.isdigit():
         raise ValueError("isbn must contain exactly 13 digits")
-    # TODO: verify the ISBN-13 check digit (see SPEC.md)
-    body = isbn[:12]
-    expected_check_digit = isbn13_check_digit(body)
-
-    if int(isbn[-1]) != expected_check_digit:
-        raise ValueError("Invalid ISBN-13 check digit")
-
+    if int(isbn[12]) != isbn13_check_digit(isbn[:12]):
+        raise ValueError("isbn check digit is invalid")
     return isbn
 
 
@@ -116,7 +113,7 @@ class MemberCreate(BaseModel):
     @field_validator("email")
     @classmethod
     def normalize_email(cls, value: str) -> str:
-        """Validate and normalize the email address."""
+        """Trim and lowercase first, then validate, so stored emails compare exactly."""
         email = value.strip().lower()
         if not EMAIL_PATTERN.match(email):
             raise ValueError("email is not valid")
@@ -157,8 +154,15 @@ class OrderItemIn(BaseModel):
 
 class OrderCreate(BaseModel):
     member_id: int
-    # TODO: reject an empty items list and the same book_id appearing twice (both 422)
-    items: List[OrderItemIn]
+    items: List[OrderItemIn] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def reject_duplicate_books(self) -> OrderCreate:
+        """One line per book; merging duplicates would hide a client-side mistake."""
+        book_ids = [item.book_id for item in self.items]
+        if len(set(book_ids)) != len(book_ids):
+            raise ValueError("each book may appear at most once in an order")
+        return self
 
 
 class OrderItemOut(BaseModel):
@@ -212,3 +216,4 @@ class TopBook(BaseModel):
     book_id: int
     title: str
     copies_sold: int
+
