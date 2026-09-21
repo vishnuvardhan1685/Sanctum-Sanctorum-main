@@ -24,7 +24,7 @@ RESTRICTED_MIN_TIER = MemberTier.MASTER.value
 
 def tier_at_least(tier: str, minimum: str) -> bool:
     """True if ``tier`` ranks at or above ``minimum``."""
-    return TIER_ORDER.index(tier) > TIER_ORDER.index(minimum)
+    return TIER_ORDER.index(tier) >= TIER_ORDER.index(minimum)
 
 
 def ensure_can_access_restricted(member: Member) -> None:
@@ -41,7 +41,7 @@ def create_member(db: Session, data: MemberCreate, now: datetime) -> Member:
     Rules: email (already stripped + lowercased) must be unique -> 409; created_at = now.
     """
     # TODO: reject an email that is already in use with 409
-    if(db.scalars(select(Member.id).where(Member.email == data.email))) is not None:
+    if(db.scalar(select(Member.id).where(Member.email == data.email))) is not None:
         raise HTTPException(
             status_code=409,
             detail="A member with this email already exists"
