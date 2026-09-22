@@ -1,13 +1,12 @@
 """Member operations and tier helpers."""
 from datetime import datetime
-from enum import member
 from typing import List
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Member, MemberTier, Order
+from app.models import Loan, Member, MemberTier, Order, OrderStatus
 from app.schemas import MemberCreate, MemberPage, MemberStats, MemberOut
 
 # Tiers from lowest to highest; a member's rank is their index in this list.
@@ -40,13 +39,9 @@ def create_member(db: Session, data: MemberCreate, now: datetime) -> Member:
 
     Rules: email (already stripped + lowercased) must be unique -> 409; created_at = now.
     """
-    # TODO: reject an email that is already in use with 409
-    if(db.scalar(select(Member.id).where(Member.email == data.email))) is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="A member with this email already exists"
-        )
-    
+    if db.scalar(select(Member.id).where(Member.email == data.email)) is not None:
+        raise HTTPException(status_code=409, detail="A member with this email already exists")
+
     member = Member(name=data.name, email=data.email, tier=data.tier.value, created_at=now)
     db.add(member)
     db.commit()
@@ -61,6 +56,7 @@ def get_member(db: Session, member_id: int) -> Member:
         raise HTTPException(status_code=404, detail="Member not found")
     return member
 
+
 def list_members(db: Session, limit:int = 20, offset:int = 0) -> MemberPage:
     """The member directory, id ascending, paginated the same way the book catalogue is."""
     total = db.scalar(select(func.count()).select_from(Member)) or 0
@@ -70,6 +66,7 @@ def list_members(db: Session, limit:int = 20, offset:int = 0) -> MemberPage:
         for member in members
     ]
     return MemberPage(items=member_items, total=total, limit=limit, offset=offset)
+
 
 def list_member_orders(db: Session, member_id: int) -> List[Order]:
     """All orders of a member ordered by id ascending; 404 if the member is missing."""
@@ -87,4 +84,23 @@ def get_member_stats(db: Session, member_id: int, now: datetime) -> MemberStats:
     - overdue_loans counts unreturned loans with now > due_at.
     - late_fees_cents sums late fees of returned loans.
     """
-    raise NotImplementedError("get_member_stats")
+    get_member(db, member_id)
+
+    orders_paid, total_spent_cents = db.execute(
+        select(func.count(Order.id), func.coalesce(func.sum(Order.total_cents), 0)).where(
+            Order.member_id == member_id, Order.status == OrderStatus.PAID.value
+        )
+    ).one()
+
+    # Loans are fetched rather than aggregated in SQL so that the overdue boundary stays defined
+    # in exactly one place (``Loan.is_overdue``).  One member's loans are a bounded set.
+    loans = db.scalars(select(Loan).where(Loan.member_id == member_id)).all()
+
+    return MemberStats(
+        member_id=member_id,
+        orders_paid=orders_paid,
+        total_spent_cents=total_spent_cents,
+        active_loans=sum(1 for loan in loans if loan.returned_at is None),
+        overdue_loans=sum(1 for loan in loans if loan.is_overdue(now)),
+        late_fees_cents=sum(loan.late_fee_cents for loan in loans if loan.returned_at is not None),
+    )
