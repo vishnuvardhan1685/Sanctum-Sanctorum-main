@@ -1,4 +1,6 @@
 """Member operations and tier helpers."""
+
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 from typing import List
 
@@ -30,7 +32,8 @@ def ensure_can_access_restricted(member: Member) -> None:
     """Raise 403 unless the member's tier may access restricted books."""
     if not tier_at_least(member.tier, RESTRICTED_MIN_TIER):
         raise HTTPException(
-            status_code=403, detail=f"Restricted books require tier '{RESTRICTED_MIN_TIER}' or higher"
+            status_code=403,
+            detail=f"Restricted books require tier '{RESTRICTED_MIN_TIER}' or higher",
         )
 
 
@@ -39,15 +42,17 @@ def create_member(db: Session, data: MemberCreate, now: datetime) -> Member:
 
     Rules: email (already stripped + lowercased) must be unique -> 409; created_at = now.
     """
-    if db.scalar(select(Member.id).where(Member.email == data.email)) is not None:
-        raise HTTPException(status_code=409, detail="A member with this email already exists")
-
     member = Member(name=data.name, email=data.email, tier=data.tier.value, created_at=now)
     db.add(member)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409, detail="A member with this email already exists"
+        )
     db.refresh(member)
     return member
-
 
 def get_member(db: Session, member_id: int) -> Member:
     """Return a member by id, or raise 404."""
@@ -57,21 +62,22 @@ def get_member(db: Session, member_id: int) -> Member:
     return member
 
 
-def list_members(db: Session, limit:int = 20, offset:int = 0) -> MemberPage:
+def list_members(db: Session, limit: int = 20, offset: int = 0) -> MemberPage:
     """The member directory, id ascending, paginated the same way the book catalogue is."""
     total = db.scalar(select(func.count()).select_from(Member)) or 0
-    members = db.scalars(select(Member).order_by(Member.id.asc()).limit(limit).offset(offset)).all()
-    member_items = [
-        MemberOut.model_validate(member)
-        for member in members
-    ]
+    members = db.scalars(
+        select(Member).order_by(Member.id.asc()).limit(limit).offset(offset)
+    ).all()
+    member_items = [MemberOut.model_validate(member) for member in members]
     return MemberPage(items=member_items, total=total, limit=limit, offset=offset)
 
 
 def list_member_orders(db: Session, member_id: int) -> List[Order]:
     """All orders of a member ordered by id ascending; 404 if the member is missing."""
     get_member(db, member_id)
-    return list(db.scalars(select(Order).where(Order.member_id == member_id).order_by(Order.id)))
+    return list(
+        db.scalars(select(Order).where(Order.member_id == member_id).order_by(Order.id))
+    )
 
 
 def get_member_stats(db: Session, member_id: int, now: datetime) -> MemberStats:
@@ -87,9 +93,9 @@ def get_member_stats(db: Session, member_id: int, now: datetime) -> MemberStats:
     get_member(db, member_id)
 
     orders_paid, total_spent_cents = db.execute(
-        select(func.count(Order.id), func.coalesce(func.sum(Order.total_cents), 0)).where(
-            Order.member_id == member_id, Order.status == OrderStatus.PAID.value
-        )
+        select(
+            func.count(Order.id), func.coalesce(func.sum(Order.total_cents), 0)
+        ).where(Order.member_id == member_id, Order.status == OrderStatus.PAID.value)
     ).one()
 
     # Loans are fetched rather than aggregated in SQL so that the overdue boundary stays defined
@@ -102,5 +108,7 @@ def get_member_stats(db: Session, member_id: int, now: datetime) -> MemberStats:
         total_spent_cents=total_spent_cents,
         active_loans=sum(1 for loan in loans if loan.returned_at is None),
         overdue_loans=sum(1 for loan in loans if loan.is_overdue(now)),
-        late_fees_cents=sum(loan.late_fee_cents for loan in loans if loan.returned_at is not None),
+        late_fees_cents=sum(
+            loan.late_fee_cents for loan in loans if loan.returned_at is not None
+        ),
     )
