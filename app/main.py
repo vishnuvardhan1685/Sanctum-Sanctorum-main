@@ -1,4 +1,5 @@
 """Application factory for the Sanctum Sanctorum Bookstore API."""
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -56,7 +57,9 @@ def create_app(init_db: bool = True) -> FastAPI:
 
     # Mounted last so API routes take precedence over static files.
     if FRONTEND_DIR.is_dir():
-        application.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+        application.mount(
+            "/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend"
+        )
 
     return application
 

@@ -1,4 +1,5 @@
 """ORM models.  Importing this module registers every table on ``Base.metadata``."""
+
 from __future__ import annotations
 
 import enum
@@ -32,7 +33,9 @@ class Book(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
     author: Mapped[str] = mapped_column(String(200))
-    isbn: Mapped[str] = mapped_column(String(13), unique=True, nullable=False, index=True)
+    isbn: Mapped[str] = mapped_column(
+        String(13), unique=True, nullable=False, index=True
+    )
     price_cents: Mapped[int] = mapped_column(Integer)
     stock: Mapped[int] = mapped_column(Integer)
     restricted: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -47,8 +50,12 @@ class Member(Base):
     tier: Mapped[str] = mapped_column(String(20), default=MemberTier.APPRENTICE.value)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
-    orders: Mapped[List[Order]] = relationship(back_populates="member", order_by="Order.id")
-    loans: Mapped[List[Loan]] = relationship(back_populates="member", order_by="Loan.id")
+    orders: Mapped[List[Order]] = relationship(
+        back_populates="member", order_by="Order.id"
+    )
+    loans: Mapped[List[Loan]] = relationship(
+        back_populates="member", order_by="Loan.id"
+    )
 
 
 class Order(Base):
@@ -95,13 +102,11 @@ class Loan(Base):
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), index=True)
     book_id: Mapped[int] = mapped_column(ForeignKey("books.id"), index=True)
     borrowed_at: Mapped[datetime] = mapped_column(DateTime)
-    # TODO: the loan model is incomplete. Still missing (see SPEC.md, "Loans"):
-    #   - due_at: when the book must be back (borrowed_at + 14 days)
-    #   - returned_at: nullable, set when the book is returned
-    #   - late_fee_cents: charged on return, defaults to 0
-    due_at : Mapped[datetime] = mapped_column(DateTime)
-    returned_at : Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
-    late_fee_cents : Mapped[int] = mapped_column(Integer, default=0)
+    due_at: Mapped[datetime] = mapped_column(DateTime)
+    returned_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, default=None
+    )
+    late_fee_cents: Mapped[int] = mapped_column(Integer, default=0)
 
     member: Mapped[Member] = relationship(back_populates="loans")
     book: Mapped[Book] = relationship()

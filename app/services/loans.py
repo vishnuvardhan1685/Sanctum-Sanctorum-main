@@ -1,4 +1,5 @@
 """Library loan operations: borrowing and returning books."""
+
 from datetime import datetime, timedelta
 from math import ceil
 from typing import Dict, List, Optional
@@ -51,7 +52,9 @@ def to_loan_out(loan: Loan, now: datetime) -> LoanOut:
     )
 
 
-def calculate_late_fee(due_at: datetime, returned_at: datetime, price_cents: int) -> int:
+def calculate_late_fee(
+    due_at: datetime, returned_at: datetime, price_cents: int
+) -> int:
     """25 cents per started day late (any partial day counts), capped at the book's price; 0 if not late."""
     if returned_at <= due_at:
         return 0
@@ -84,19 +87,26 @@ def create_loan(db: Session, data: LoanCreate, now: datetime) -> LoanOut:
     ).all()
 
     if any(loan.is_overdue(now) for loan in open_loans):
-        raise HTTPException(status_code=409, detail="Member has an overdue loan to return first")
+        raise HTTPException(
+            status_code=409, detail="Member has an overdue loan to return first"
+        )
     if any(loan.book_id == book.id for loan in open_loans):
-        raise HTTPException(status_code=409, detail="Member already has this book on loan")
+        raise HTTPException(
+            status_code=409, detail="Member already has this book on loan"
+        )
 
     limit = TIER_LOAN_LIMIT[member.tier]
     if limit is not None and len(open_loans) >= limit:
         raise HTTPException(
-            status_code=409, detail=f"Tier '{member.tier}' allows at most {limit} concurrent loans"
+            status_code=409,
+            detail=f"Tier '{member.tier}' allows at most {limit} concurrent loans",
         )
 
     try:
         if not book_service.reserve_stock(db, book.id, 1):
-            raise HTTPException(status_code=409, detail="No copies of this book are available")
+            raise HTTPException(
+                status_code=409, detail="No copies of this book are available"
+            )
         loan = Loan(
             member_id=member.id,
             book_id=book.id,
@@ -136,7 +146,9 @@ def return_loan(db: Session, loan_id: int, now: datetime) -> LoanOut:
     """
     loan = _get_loan(db, loan_id)
     if loan.returned_at is not None:
-        raise HTTPException(status_code=409, detail="This loan has already been returned")
+        raise HTTPException(
+            status_code=409, detail="This loan has already been returned"
+        )
 
     book = book_service.get_book(db, loan.book_id)
     try:
@@ -161,7 +173,9 @@ def list_member_loans(
 ) -> List[LoanOut]:
     """A member's loans ordered by id, optionally filtered by computed status; 404 if member missing."""
     member_service.get_member(db, member_id)
-    loans = db.scalars(select(Loan).where(Loan.member_id == member_id).order_by(Loan.id.asc())).all()
+    loans = db.scalars(
+        select(Loan).where(Loan.member_id == member_id).order_by(Loan.id.asc())
+    ).all()
     # Status is computed, not a column, so the filter is applied after serialization rather than
     # rebuilt as a second set of SQL predicates that could drift from ``loan_status``.
     serialized = [to_loan_out(loan, now) for loan in loans]

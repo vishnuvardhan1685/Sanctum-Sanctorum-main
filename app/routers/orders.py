@@ -12,7 +12,9 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 
 @router.post("", response_model=OrderOut, status_code=201)
-def create_order(data: OrderCreate, db: Session = Depends(get_db), now: datetime = Depends(get_now)):
+def create_order(
+    data: OrderCreate, db: Session = Depends(get_db), now: datetime = Depends(get_now)
+):
     return service.create_order(db, data, now)
 
 

@@ -1,4 +1,5 @@
 """Reporting queries."""
+
 from typing import List
 
 from sqlalchemy import func, select
@@ -26,4 +27,7 @@ def top_books(db: Session, limit: int = 5) -> List[TopBook]:
         .limit(limit)
     ).all()
 
-    return [TopBook(book_id=row.id, title=row.title, copies_sold=row.copies_sold) for row in rows]
+    return [
+        TopBook(book_id=row.id, title=row.title, copies_sold=row.copies_sold)
+        for row in rows
+    ]

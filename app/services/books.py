@@ -1,5 +1,6 @@
 """Book catalogue operations."""
-from typing import Dict,Optional
+
+from typing import Dict, Optional
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select, update
@@ -9,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models import Book
 from app.schemas import BookCreate, BookPage, BookSort, BookUpdate, BookOut
 
-SORT_COLUMNS : dict[str, ColumnElement] = {
+SORT_COLUMNS: dict[str, ColumnElement] = {
     "title": Book.title.asc(),
     "-title": Book.title.desc(),
     "price": Book.price_cents.asc(),
@@ -21,16 +22,14 @@ def create_book(db: Session, data: BookCreate) -> Book:
     """Add a book to the catalogue.
     Rules: the (already normalized) ISBN must be unique -> 409 otherwise.
     """
-    # TODO: reject a duplicate ISBN with 409
     book = Book(**data.model_dump())
     db.add(book)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException (
-            status_code=409,
-            detail="A book with this ISBN already exists"
+        raise HTTPException(
+            status_code=409, detail="A book with this ISBN already exists"
         )
     db.refresh(book)
     return book
@@ -53,6 +52,7 @@ def update_book(db: Session, book_id: int, data: BookUpdate) -> Book:
     db.refresh(book)
     return book
 
+
 def reserve_stock(db: Session, book_id: int, quantity: int) -> bool:
     """Reserve copies atomically.
 
@@ -61,22 +61,26 @@ def reserve_stock(db: Session, book_id: int, quantity: int) -> bool:
     The caller is responsible for committing/rolling back the
     surrounding transaction.
     """
-    if(quantity <= 0):
+    if quantity <= 0:
         raise ValueError("Quantity must be greater than 0")
-    
+
     result = db.execute(
-        update(Book).where(Book.id == book_id, Book.stock >= quantity).values(stock=Book.stock - quantity)
+        update(Book)
+        .where(Book.id == book_id, Book.stock >= quantity)
+        .values(stock=Book.stock - quantity)
     )
-    return result.rowcount == 1 # type: ignore[attr-defined]
+    return result.rowcount == 1  # type: ignore[attr-defined]
+
 
 def release_stock(db: Session, book_id: int, quantity: int) -> None:
     """Returns stock to the catalogue."""
-    if(quantity <= 0):
+    if quantity <= 0:
         raise ValueError("Quantity must be greater than 0")
-    
+
     db.execute(
         update(Book).where(Book.id == book_id).values(stock=Book.stock + quantity)
     )
+
 
 def list_books(
     db: Session,
@@ -88,7 +92,7 @@ def list_books(
     limit: int = 20,
     offset: int = 0,
 ) -> BookPage:
-    #"""Search the catalogue.
+    # """Search the catalogue.
 
     # Rules:
     # - ``q`` matches title OR author, case-insensitive substring.
@@ -117,9 +121,7 @@ def list_books(
     if max_price is not None:
         query = query.where(Book.price_cents <= max_price)
 
-    total = db.scalar(
-        select(func.count()).select_from(query.subquery())
-    ) or 0
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
 
     ordering = []
 
@@ -128,17 +130,9 @@ def list_books(
 
     ordering.append(Book.id.asc())
 
-    books = db.scalars(
-        query
-        .order_by(*ordering)
-        .limit(limit)
-        .offset(offset)
-    ).all()
+    books = db.scalars(query.order_by(*ordering).limit(limit).offset(offset)).all()
 
-    book_items = [
-        BookOut.model_validate(book)
-        for book in books
-    ]
+    book_items = [BookOut.model_validate(book) for book in books]
 
     return BookPage(
         items=book_items,

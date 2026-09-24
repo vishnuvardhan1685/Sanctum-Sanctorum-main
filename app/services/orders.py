@@ -1,4 +1,5 @@
 """Order operations: placing, paying and cancelling purchases."""
+
 from datetime import datetime
 from typing import Dict, List
 
@@ -45,7 +46,9 @@ def create_order(db: Session, data: OrderCreate, now: datetime) -> Order:
 
     # Every book is resolved before any other rule runs, so a missing book reports 404 even when
     # an earlier line would also have failed the tier check.
-    books: Dict[int, Book] = {item.book_id: book_service.get_book(db, item.book_id) for item in data.items}
+    books: Dict[int, Book] = {
+        item.book_id: book_service.get_book(db, item.book_id) for item in data.items
+    }
 
     if any(book.restricted for book in books.values()):
         member_service.ensure_can_access_restricted(member)
@@ -54,7 +57,8 @@ def create_order(db: Session, data: OrderCreate, now: datetime) -> Order:
         for item in data.items:
             if not book_service.reserve_stock(db, item.book_id, item.quantity):
                 raise HTTPException(
-                    status_code=409, detail=f"Insufficient stock for book {item.book_id}"
+                    status_code=409,
+                    detail=f"Insufficient stock for book {item.book_id}",
                 )
         order = _build_order(member, books, data, now)
         db.add(order)
@@ -69,7 +73,9 @@ def create_order(db: Session, data: OrderCreate, now: datetime) -> Order:
     return order
 
 
-def _build_order(member: Member, books: Dict[int, Book], data: OrderCreate, now: datetime) -> Order:
+def _build_order(
+    member: Member, books: Dict[int, Book], data: OrderCreate, now: datetime
+) -> Order:
     """Price an order against the books as they are right now; items keep the submitted order."""
     items: List[OrderItem] = [
         OrderItem(
@@ -80,7 +86,9 @@ def _build_order(member: Member, books: Dict[int, Book], data: OrderCreate, now:
         for item in data.items
     ]
     subtotal_cents = sum(item.line_total_cents for item in items)
-    discount_percent = calculate_discount_percent(member, sum(item.quantity for item in items))
+    discount_percent = calculate_discount_percent(
+        member, sum(item.quantity for item in items)
+    )
     discount_cents = subtotal_cents * discount_percent // 100
 
     return Order(
@@ -107,7 +115,9 @@ def _get_pending_order(db: Session, order_id: int, action: str) -> Order:
     """Fetch an order that is still pending, or raise 404 / 409."""
     order = get_order(db, order_id)
     if order.status != OrderStatus.PENDING.value:
-        raise HTTPException(status_code=409, detail=f"Cannot {action} an order that is {order.status}")
+        raise HTTPException(
+            status_code=409, detail=f"Cannot {action} an order that is {order.status}"
+        )
     return order
 
 
