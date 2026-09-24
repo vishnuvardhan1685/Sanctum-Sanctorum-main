@@ -525,6 +525,12 @@ function stockHTML(stock) {
 function bookRowHTML(b) {
   const editing = state.editingBookId === b.id;
   const outOfStock = b.stock === 0;
+
+  const restrictedForMember =
+    b.restricted &&
+    state.member &&
+    TIERS.indexOf(state.member.tier) < TIERS.indexOf('master');
+  
   const restrictedBadge = b.restricted
     ? '<span class="badge badge-restricted" title="Available to Master and Supreme members">Restricted</span>'
     : '';
@@ -559,8 +565,22 @@ function bookRowHTML(b) {
     <td class="actions"><div class="btn-group">
       <button type="button" class="btn btn-ghost btn-sm" data-action="edit-book" data-id="${b.id}" aria-label="Edit price and stock of ${esc(b.title)}">Edit</button>
       <button type="button" class="btn btn-secondary btn-sm" data-action="borrow" data-id="${b.id}" ${outOfStock ? 'disabled title="Out of stock"' : ''} aria-label="Borrow ${esc(b.title)}">Borrow</button>
-      <button type="button" class="btn btn-accent btn-sm" data-action="add-to-cart" data-id="${b.id}" ${outOfStock ? 'disabled title="Out of stock"' : ''} aria-label="Add ${esc(b.title)} to cart">Add to cart</button>
-    </div></td>
+      <button
+        type="button"
+        class="btn btn-accent btn-sm"
+        data-action="add-to-cart"
+        data-id="${b.id}"
+        ${
+          outOfStock
+            ? 'disabled title="Out of stock"'
+            : restrictedForMember
+              ? 'disabled title="Restricted books require Master tier or above"'
+              : ''
+        }
+        aria-label="Add ${esc(b.title)} to cart"
+      >
+        Add to cart
+      </button></div></td>
   </tr>`;
 }
 
@@ -764,30 +784,64 @@ function saveCart() { store.set(STORAGE_KEYS.cart, state.cart); renderHeader(); 
 
 function addToCart(id) {
   if (!requireMember('add books to the cart')) return;
+
   const book = state.books.get(id);
   if (!book) return;
-  const existing = state.cart.find((i) => i.book_id === id);
-  const currentQty = existing ? existing.quantity : 0;
-  if (Number.isFinite(book.stock) && currentQty + 1 > book.stock) {
-    toast({ type: 'warning', title: 'Not enough stock', message: `Only ${book.stock} ${book.stock === 1 ? 'copy' : 'copies'} of “${book.title}” available.` });
+
+  if (
+    book.restricted &&
+    state.member &&
+    TIERS.indexOf(state.member.tier) < TIERS.indexOf('master')
+  ) {
+    toast({
+      type: 'warning',
+      title: 'Restricted title',
+      message: 'Restricted books require Master tier or above.'
+    });
     return;
   }
+
+  const existing = state.cart.find((i) => i.book_id === id);
+  const currentQty = existing ? existing.quantity : 0;
+
+  if (Number.isFinite(book.stock) && currentQty + 1 > book.stock) {
+    toast({
+      type: 'warning',
+      title: 'Not enough stock',
+      message: `Only ${book.stock} ${book.stock === 1 ? 'copy' : 'copies'} of “${book.title}” available.`
+    });
+    return;
+  }
+
   if (existing) {
     existing.quantity += 1;
-    Object.assign(existing, { title: book.title, author: book.author, price_cents: book.price_cents, stock: book.stock, restricted: book.restricted });
+    Object.assign(existing, {
+      title: book.title,
+      author: book.author,
+      price_cents: book.price_cents,
+      stock: book.stock,
+      restricted: book.restricted
+    });
   } else {
     state.cart.push({
-      book_id: book.id, title: book.title, author: book.author, price_cents: book.price_cents,
-      stock: book.stock, restricted: book.restricted, quantity: 1,
+      book_id: book.id,
+      title: book.title,
+      author: book.author,
+      price_cents: book.price_cents,
+      stock: book.stock,
+      restricted: book.restricted,
+      quantity: 1,
     });
   }
-  saveCart();
-  toast({ type: 'success', title: 'Added to cart', message: `“${book.title}” × ${currentQty + 1}` });
-  if (book.restricted && state.member && TIERS.indexOf(state.member.tier) < TIERS.indexOf('master')) {
-    toast({ type: 'info', title: 'Restricted title', message: 'Checkout will require Master tier or above.' });
-  }
-}
 
+  saveCart();
+
+  toast({
+    type: 'success',
+    title: 'Added to cart',
+    message: `“${book.title}” × ${currentQty + 1}`
+  });
+}
 function cartEstimate() {
   const subtotal = state.cart.reduce((s, i) => s + i.price_cents * i.quantity, 0);
   const qty = state.cart.reduce((s, i) => s + i.quantity, 0);
@@ -1132,6 +1186,14 @@ function setMember(id, member = null) {
   const changed = id !== state.memberId;
   state.memberId = id;
   state.member = member;
+  if (member) {
+    state.cart = state.cart.filter(
+      (item) =>
+        !item.restricted ||
+        TIERS.indexOf(member.tier) >= TIERS.indexOf('master')
+    );
+    saveCart();
+  }
   store.set(STORAGE_KEYS.member, id);
   if (changed) {
     state.stats = { data: null, error: null, loading: false };
