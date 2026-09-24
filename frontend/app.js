@@ -861,8 +861,9 @@ async function checkout(button) {
     renderOrderDetail();
     toast({ type: 'success', title: `Order #${order.id} placed`, message: `Total ${fmtMoney(order.total_cents)} — awaiting payment.` });
     $('#order-detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    loadCatalog();
     loadOrders();
-    state.catalog.loaded = false; // stock changed
+    loadStats();
   } catch {
     setBusy(button, false); // cart kept intact so the member can adjust and retry
   }
@@ -983,6 +984,7 @@ async function payOrder(id, button) {
     toast({ type: 'success', title: `Order #${id} paid`, message: `Charged ${fmtMoney(order.total_cents)}.` });
     renderOrderDetail();
     loadOrders();
+    loadStats();
   } catch (err) {
     setBusy(button, false);
     if (err.status === 409) loadOrders(); // status changed elsewhere; refresh
@@ -1009,9 +1011,10 @@ async function cancelOrder(id, button) {
     const order = await api(`/orders/${id}/cancel`, { method: 'POST', context: `Cancelling order #${id}` });
     upsertOrder(order);
     toast({ type: 'success', title: `Order #${id} cancelled`, message: 'Reserved stock has been released.' });
-    state.catalog.loaded = false;
-    renderOrderDetail();
+    loadCatalog();
     loadOrders();
+    loadStats();
+    renderOrderDetail();
   } catch (err) {
     setBusy(button, false);
     button.classList.remove('confirming');
@@ -1262,6 +1265,8 @@ async function borrowBook(id, button) {
     const loan = await api('/loans', { method: 'POST', body: { member_id: state.memberId, book_id: id }, context: 'Borrowing' });
     toast({ type: 'success', title: 'Book borrowed', message: `“${book?.title ?? `Book #${id}`}” is due ${fmtDate(loan.due_at, { dateOnly: true })}.` });
     loadCatalog();
+    loadLoans();
+    loadStats();
   } catch {
     if (button.isConnected) setBusy(button, false);
   }
@@ -1332,11 +1337,19 @@ async function returnLoan(id, button) {
       message: fee > 0 ? `Late fee charged: ${fmtMoney(fee)}.` : 'Returned on time — no late fee.',
       timeout: fee > 0 ? 9000 : undefined,
     });
-    state.catalog.loaded = false;
-    loadLoans();
+    // Update local loan item so UI immediately shows returned state
+    const idx = state.loans.items.findIndex((x) => x.id === loan.id);
+    if (idx >= 0) state.loans.items[idx] = loan;
+    renderLoans();
+
+    // Reconcile catalog, loans, and stats with authoritative server state
+    await Promise.all([loadCatalog(), loadLoans(), loadStats()]);
   } catch (err) {
     if (button.isConnected) setBusy(button, false);
-    if (err.status === 409) loadLoans();
+    if (err.status === 409) {
+      toast({ type: 'warning', title: 'Already returned', message: err.message || 'This loan has already been returned.' });
+      await loadLoans();
+    }
   }
 }
 
@@ -1382,7 +1395,7 @@ async function loadReports() {
    ========================================================================= */
 
 function initActions() {
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
     const target = e.target.closest('[data-action]');
     if (!target || target.disabled) return;
     const id = target.dataset.id !== undefined ? Number(target.dataset.id) : undefined;
@@ -1397,22 +1410,23 @@ function initActions() {
         state.editingBookId = null; loadCatalog(); break;
       case 'edit-book': startBookEdit(id); break;
       case 'cancel-edit': cancelBookEdit(); break;
-      case 'save-book': saveBookEdit(id); break;
+      case 'save-book': await saveBookEdit(id); break;
       case 'add-to-cart': addToCart(id); break;
-      case 'borrow': borrowBook(id, target); break;
+      case 'borrow': await borrowBook(id, target); break;
       case 'cart-remove':
         state.cart = state.cart.filter((i) => i.book_id !== id);
         saveCart(); renderCart(); break;
       case 'cart-clear': state.cart = []; saveCart(); renderCart(); break;
-      case 'checkout': checkout(target); break;
-      case 'order-view': viewOrder(id, target); break;
-      case 'order-pay': payOrder(id, target); break;
-      case 'order-cancel': cancelOrder(id, target); break;
+      case 'checkout': await checkout(target); break;
+      case 'order-view': await viewOrder(id, target); break;
+      case 'order-pay': await payOrder(id, target); break;
+      case 'order-cancel': await cancelOrder(id, target); break;
       case 'close-order-detail': state.orderDetail = null; renderOrderDetail(); break;
-      case 'refresh-orders': loadOrders(); break;
-      case 'refresh-loans': loadLoans(); break;
-      case 'refresh-reports': loadReports(); break;
-      case 'refresh-member': refreshMember(); break;
+      case 'refresh-orders': await loadOrders(); break;
+      case 'refresh-loans': await loadLoans(); break;
+      case 'loan-return': await returnLoan(id, target); break;
+      case 'refresh-reports': await loadReports(); break;
+      case 'refresh-member': await refreshMember(); break;
       case 'sign-out':
         setMember(null);
         toast({ type: 'info', title: 'Signed out' });
