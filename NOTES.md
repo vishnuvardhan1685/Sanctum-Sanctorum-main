@@ -516,36 +516,6 @@ uv run pytest
 
 continues to work without requiring an external database.
 
-## PostgreSQL support
-
-The database configuration was updated so that SQLite-specific connection arguments are only applied when SQLite is actually being used.
-
-For PostgreSQL, the application uses the PostgreSQL connection normally.
-
-I also enabled:
-
-```python
-pool_pre_ping=True
-```
-
-so stale database connections can be detected and refreshed, which is useful for a hosted PostgreSQL database.
-
-The PostgreSQL driver is provided through:
-
-```text
-psycopg[binary]
-```
-
-and the production database URL is supplied through:
-
-```text
-SANCTUM_DATABASE_URL
-```
-
-as an environment variable.
-
-The database credentials are not committed to the repository.
-
 ## Deployment
 
 The final application is deployed using:
@@ -685,56 +655,7 @@ The final implementation was reviewed and tested by me, and I understand the rea
 
 ---
 
-# 12. Git history
-
-I kept the Git history intact and worked through the project using incremental commits rather than making one large final commit.
-
-The implementation followed the general feature progression suggested by the assignment:
-
-```text
-Books
-→ Members
-→ Orders
-→ Loans
-→ Statistics / Reports
-→ Concurrency
-→ Deployment
-→ Frontend
-```
-
-The original repository history was preserved.
-
-I did not squash the entire implementation into one commit or recreate the repository to hide intermediate work.
-
----
-
-# 13. Final submission checklist
-
-- [x] Backend implementation completed according to `SPEC.md`
-- [x] Original tests were not modified
-- [x] Three additional concurrency tests added
-- [x] Test suite passes locally
-- [x] `205` tests passing
-- [x] No failing tests
-- [x] Book validation and catalogue operations implemented
-- [x] Member validation and access rules implemented
-- [x] Order pricing and stock reservation implemented
-- [x] Loan model and loan lifecycle implemented
-- [x] Member statistics and reports implemented
-- [x] Atomic concurrent stock reservation implemented
-- [x] Frontend catalogue/order/loan state refresh implemented
-- [x] PostgreSQL deployment support implemented
-- [x] Application deployed on Vercel
-- [x] PostgreSQL database deployed on Neon
-- [x] `SANCTUM_DATABASE_URL` configured through deployment environment variables
-- [x] No database credentials committed to Git
-- [x] No `.env` secrets committed
-- [x] Git history preserved
-- [x] `NOTES.md` completed
-
----
-
-# 14. Final summary
+# 12. Final summary
 
 The main objective of the implementation was not just to make the test suite pass, but to keep the application consistent with the specification and maintain a clean separation between the API layer, business logic, and database layer.
 
